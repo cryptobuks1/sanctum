@@ -1,62 +1,302 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400"></a></p>
+#### Laravel Auth
 
-<p align="center">
-<a href="https://travis-ci.org/laravel/framework"><img src="https://travis-ci.org/laravel/framework.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+```
+composer require laravel/ui
 
-## About Laravel
+php artisan ui:auth
+```
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+#### Laravel Sanctum
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+```
+composer require laravel/sanctum
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
 
-## Learning Laravel
+php artisan migrate
+```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Add Sanctum's middleware to your api middleware group within your `app/Http/Kernel.php` file:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains over 1500 video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```php
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
-## Laravel Sponsors
+'api' => [
+    EnsureFrontendRequestsAreStateful::class,
+    'throttle:60,1',
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
+],
+```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the Laravel [Patreon page](https://patreon.com/taylorotwell).
+To begin issuing tokens for users, your User model should use the `HasApiTokens` trait:
 
-### Premium Partners
+```php
+use Laravel\Sanctum\HasApiTokens;
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Cubet Techno Labs](https://cubettech.com)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[Many](https://www.many.co.uk)**
-- **[Webdock, Fast VPS Hosting](https://www.webdock.io/en)**
-- **[DevSquad](https://devsquad.com)**
-- **[Curotec](https://www.curotec.com/)**
-- **[OP.GG](https://op.gg)**
+class User extends Authenticatable
+{
+    use HasApiTokens, Notifiable;
+}
+```
 
-## Contributing
+##### Create a User
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```
+php artisan tinker
 
-## Code of Conduct
+App\User::create(['name'=>'John Doe', 'email'=>'johndoe@example.org', 'password'=>Hash::make('secret')]);
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+##### Issuing API Tokens
 
-## Security Vulnerabilities
+In routes/api.php
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```php
+use App\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Route;
 
-## License
+Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return $request->user();
+});
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Route::post('/sanctum/token', function (Request $request) {
+    $request->validate([
+        'email' => 'required|email',
+        'password' => 'required',
+    ]);
+
+    $user = User::where('email', $request->email)->first();
+
+    if (! $user || ! Hash::check($request->password, $user->password)) {
+        throw ValidationException::withMessages([
+            'email' => ['The provided credentials are incorrect.'],
+        ]);
+    }
+
+    return $user->createToken($request->email)->plainTextToken;
+});
+```
+
+##### Request
+
+```
+POST /api/sanctum/token HTTP/1.1
+Host: 127.0.0.1:8000
+Accept: application/json
+Content-Type: application/json
+
+{
+    "email": "johndoe@example.org",
+    "password": "secret"
+}
+```
+
+##### Response
+
+```
+27|XHATyNgZAslFhmE3Z3HBXWN86zJH3vaauNTwriBaPFAcroIDDCe1SJ1ysTLoE08ZrpuUgOYp7U5vtLo2
+```
+
+### Laravel Websockets
+
+```
+composer require beyondcode/laravel-websockets
+
+php artisan vendor:publish --provider="BeyondCode\LaravelWebSockets\WebSocketsServiceProvider" --tag="migrations"
+
+php artisan migrate
+
+php artisan vendor:publish --provider="BeyondCode\LaravelWebSockets\WebSocketsServiceProvider" --tag="config"
+```
+
+#### Pusher
+
+```
+composer require pusher/pusher-php-server "~3.0"
+```
+
+`.env`
+
+```
+BROADCAST_DRIVER=pusher
+PUSHER_APP_KEY=s3cr3t
+PUSHER_APP_SECRET=s3cr3t
+PUSHER_APP_ID=local
+PUSHER_APP_CLUSTER=mt1
+```
+
+`config/broadcasting.php`
+
+```php
+'pusher' => [
+    'driver' => 'pusher',
+    'key' => env('PUSHER_APP_KEY'),
+    'secret' => env('PUSHER_APP_SECRET'),
+    'app_id' => env('PUSHER_APP_ID'),
+    'options' => [
+        'cluster' => env('PUSHER_APP_CLUSTER'),
+        'encrypted' => true,
+        'host' => '127.0.0.1',
+        'port' => 6001,
+        'scheme' => 'http'
+    ],
+],
+```
+
+`config/app.php` uncomment
+
+```php
+App\Providers\BroadcastServiceProvider::class
+```
+
+#### Dashboard
+
+`http://127.0.0.1:8000/laravel-websockets`
+
+#### Event & Channel
+
+```
+php artisan make:event Chat
+```
+
+```php
+class Chat implements ShouldBroadcast{
+
+public $payload = 'Hello World!';
+...
+public function broadcastOn()
+    {
+        return new PrivateChannel('App.User.3');
+    }
+...
+}
+
+```
+
+In `routes/channels.php`
+
+```php
+Broadcast::channel('App.User.{id}', function ($user, $id) {
+    //Check User's Authorization to listen on the channel.
+    return true;
+}
+```
+
+### Authorizing Private Broadcast Channels
+
+You should place the `Broadcast::routes` method call within your `routes/api.php` file:
+
+`Broadcast::routes(['middleware' => ['auth:sanctum']]);`
+
+### Running Laravel & Websocket Server
+
+```
+php artisan serve
+php artisan websockets:serve
+```
+
+### UI
+
+```
+npm i laravel-echo pusher-js axios
+```
+
+```js
+<script>
+import Echo from "laravel-echo";
+import io from "socket.io-client";
+
+window.io = io;
+
+window._ = require("lodash");
+
+/**
+ * We'll load the axios HTTP library which allows us to easily issue requests
+ * to our Laravel back-end. This library automatically handles sending the
+ * CSRF token as a header based on the value of the "XSRF" token cookie.
+ */
+
+window.axios = require("axios");
+
+window.axios.defaults.headers.common["X-Requested-With"] = "XMLHttpRequest";
+
+window.axios.defaults.withCredentials = true;
+
+/**
+ * Echo exposes an expressive API for subscribing to channels and listening
+ * for events that are broadcast by Laravel. Echo and event broadcasting
+ * allows your team to easily build robust real-time web applications.
+ */
+
+// Requisita o endpoint para gerar um cookie
+window.axios.get("/sanctum/csrf-cookie").then(() => {
+    const data = {
+        email: "a@a.com",
+        password: "123456",
+    };
+
+    // Retorna a promessa da requisição
+    return (
+        window.axios
+            .post("/api/auth/login", data)
+            // Caso sucesso no login
+            .then(() => {
+                // Conecta com o servidor de socket
+                echo();
+            })
+    );
+});
+
+const echo = () => {
+    // Faz require do pusherjs
+    window.Pusher = require("pusher-js");
+
+    // Inicia uma instância do Echo
+    window.Echo = new Echo({
+        // Seta o broadcaster
+        broadcaster: "pusher",
+        // Secret key
+        key: "2398dsf1",
+        // Websocket host
+        wsHost: "127.0.0.1",
+        // Websocket port
+        wsPort: 6001,
+
+        // General configs
+        forceTLS: false,
+        cluster: "mt1",
+        disableStats: true,
+        /**
+         * Autorizador
+         */
+        authorizer: (channel) => ({
+            // Função que autoriza os canais private e presence
+            authorize: (socketId, callback) =>
+                // Retorna a promessa da requisição
+                axios
+                    .post(window.location.origin + "/api/broadcasting/auth", {
+                        // Informa o id do socket
+                        socket_id: socketId,
+                        // e o nome do canal que está tentando conectar
+                        channel_name: channel.name,
+                    })
+                    // Caso sucesso, retorna callback e libera o acesso
+                    .then((response) => callback(false, response.data))
+                    // Caso erro, retorna callback e bloqueia o acesso
+                    .catch((error) => callback(true, error)),
+        }),
+    });
+};
+
+</script>
+```
+
+### Fire an Event
+
+```
+php artisan tinker
+event(new App\Events\Chat())
+```
